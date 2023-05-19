@@ -14,6 +14,7 @@ int main() {
     
     char buffer[2];
     int i, r, character;
+    FILE *file;
 
 
     //Random nummer initialisieren und generieren
@@ -31,25 +32,42 @@ int main() {
      }
      
  //Ab hier fängt log an
-  FILE *file;
+ 
   file = fopen("Messwerte.txt", "w");
     if (file == NULL) {
         printf("Die Datei wurde nicht richtig erstellt.\n");
         return 1;
     }
-    else printf("Die Datei wurde richtig erstellt");
+    else printf("Die Datei wurde richtig erstellt.\n");
     for (i = 0; i < ARRAY_SIZE; i++) {
-        fprintf(file, "%d\n", voltage[i]);
+        if (voltage[i]< 1000)
+        {
+             fprintf(file, "%d\n", voltage[i]);
+             r++;
+             
+        }
+        
+       
+    }
+    printf("%d Messwerte wurden erforglreich in die Datei geschrieben.\n", r);
+
+    fclose(file);
+
+    printf("\nText ausgabe zum Ǜberprüfen des Inhalts .\n");
+
+     file = fopen("Messwerte.txt", "r");
+    if (file == NULL) {
+        printf("Die Datei konnte nicht geöffnet werden.\n");
+        return 1;
     }
 
-    printf("\nText ausgabe um zu gucken ob was reingeschrieben wurde.\n");
-
-     while ((character = fgetc(file)) != EOF) {
+    while ((character = fgetc(file)) != EOF) {
         putchar(character);
     }
 
+    fclose(file);
 
-     fclose(file);
+
 
    // printf("Die Daten wurden erfolgreich in die Datei geschrieben.\n");
 
