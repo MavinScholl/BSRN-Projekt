@@ -6,6 +6,7 @@
 #include <fcntl.h>
 #include <sys/ioctl.h>
 #include <linux/i2c-dev.h>
+#include <sys/wait.h>
 
 #define MAX_VOLTAGE 1200
 #define ARRAY_SIZE 10
