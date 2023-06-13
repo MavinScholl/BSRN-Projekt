@@ -143,8 +143,8 @@ while (!shouldExit) {
     // Ausgabe Summe
     printf("Die Summe ist: %d\n\n", summe);
 
-    // 1Beliebte Zeit warten
-        sleep(5);
+    // Wartezeit
+        sleep(30);
 
 
     
