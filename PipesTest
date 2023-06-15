@@ -1,0 +1,177 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <signal.h>
+#include <time.h>
+#include <fcntl.h>
+#include <sys/ioctl.h>
+#include <linux/i2c-dev.h>
+
+#define MAX_VOLTAGE 1200
+#define ARRAY_SIZE 10
+
+int shouldExit = 0;
+
+void sigintHandler(int signum) {
+    printf("\nProgramm wurde abgebrochen.\n");
+    fflush(stdout);
+    shouldExit = 1;
+}
+
+int main() {
+    int voltage[ARRAY_SIZE];
+    char buffer[2];
+    int i, r, character, mittelwert, summe, min, max;
+    FILE *file;
+    int pid_des_Kindes;
+    int testpipe[2];
+
+    if (pipe(testpipe) == -1) {
+        printf("Anonyme Pipe konnte nicht erstellt werden.\n");
+        exit(1);
+    } else {
+        printf("Anonyme Pipe wurde erstellt.\n");
+    }
+
+    pid_des_Kindes = fork();
+
+    if (pid_des_Kindes < 0) {
+        printf("Kindprozess konnte nicht erstellt werden.\n");
+        exit(1);
+    }
+
+    if (pid_des_Kindes > 0) {
+        srand(time(NULL));
+
+        for (size_t i = 0; i < 10; i++) {
+            voltage[i] = rand() % MAX_VOLTAGE;
+        }
+
+        for (size_t r = 0; r < ARRAY_SIZE; r++) {
+            if (voltage[r] < 1000) {
+                printf("Messwert: %d\n", voltage[r]);
+            } else {
+                printf("Der Messwert %d überschreitet die Grenze von 1000.\n", voltage[r]);
+            }
+        }
+
+        close(testpipe[0]);
+        write(testpipe[1], voltage, sizeof(voltage));
+    }
+
+    if (pid_des_Kindes == 0) {
+        printf("Kindprozess: PID: %i\n", getpid());
+        close(testpipe[1]);
+
+        for (size_t r = 0; r < ARRAY_SIZE; r++) {
+            read(testpipe[0], &voltage[r], sizeof(voltage[r]));
+
+            if (voltage[r] < 1000) {
+                printf("Kindprozess: Nachricht empfangen: %d\n", voltage[r]);
+            }
+        }
+
+        // Datei erstellen
+        file = fopen("Messwerte.txt", "w");
+        if (file == NULL) {
+            // Falls Datei nicht erstellt werden konnte, Fehlermeldung ausgeben
+            printf("Die Datei wurde nicht richtig erstellt.\n");
+            return 1;
+        } else {
+            printf("Die Datei wurde richtig erstellt.\n");
+        }
+
+        // Messwerte in Datei schreiben
+        r = 0; // Anzahl der geschriebenen Messwerte zurücksetzen
+        for (i = 0; i < ARRAY_SIZE; i++) {
+            if (voltage[i] < 1000) {
+                fprintf(file, "%d\n", voltage[i]);
+                r++;
+            }
+        }
+
+        printf("%d Messwerte wurden erfolgreich in die Datei geschrieben.\n", r);
+
+        // Datei schließen. Wenn die Datei nicht geschlossen wird, kann sie nicht gelesen werden.
+        fclose(file);
+
+        printf("\nTextausgabe zum Überprüfen des Inhalts.\n");
+
+        // Datei öffnen
+        file = fopen("Messwerte.txt", "r");
+
+        // Fehlermeldung, falls Datei nicht geöffnet werden konnte
+        if (file == NULL) {
+            printf("Die Datei konnte nicht geöffnet werden.\n");
+            return 1;
+        }
+
+        // Falls Datei geöffnet werden konnte, jede einzelne Zeichen ausgeben
+        while ((character = fgetc(file)) != EOF) {
+            putchar(character);
+        }
+
+        // Datei schließen.
+        fclose(file);
+
+        // STAT funktioniert nicht weil alle Messwerte als 0 ausgeben werden.
+    summe = 0;
+    mittelwert = 0;
+    min = voltage[0];
+    max = voltage[0];
+
+for (i = 0; i < ARRAY_SIZE; i++) {
+    read(testpipe[0], &voltage[i], sizeof(voltage[i]));
+
+    // Summe für Mittelwert berechnen
+    mittelwert = mittelwert + voltage[i];
+
+    // Summe berechnen
+    summe = summe + voltage[i];
+
+    // Kleinster Wert
+    if (voltage[i] < min) {
+        min = voltage[i];
+    }
+
+    // Größter Wert
+    if (voltage[i] > max) {
+        max = voltage[i];
+    }
+}
+
+// Mittelwert berechnen
+mittelwert = mittelwert / ARRAY_SIZE;
+
+// Schreibe die Werte in die Pipe
+write(testpipe[1], &summe, sizeof(summe));
+write(testpipe[1], &min, sizeof(min));
+write(testpipe[1], &max, sizeof(max));
+write(testpipe[1], &mittelwert, sizeof(mittelwert)); 
+// Lese die Werte aus der Pipe
+int pipeSumme, pipeMin, pipeMax, pipeMittelwert;
+read(testpipe[0], &pipeSumme, sizeof(pipeSumme));
+read(testpipe[0], &pipeMin, sizeof(pipeMin));
+read(testpipe[0], &pipeMax, sizeof(pipeMax));
+read(testpipe[0], &pipeMittelwert, sizeof(pipeMittelwert));
+
+// Ausgabe der Werte aus der Pipe
+printf("\nDer Mittelwert ist: %d\n", pipeMittelwert);
+printf("Der kleinste Wert ist: %d\n", pipeMin);
+printf("Der größte Wert ist: %d\n", pipeMax);
+printf("Die Summe ist: %d\n\n", pipeSumme);
+    }
+
+
+
+        // Wartezeit
+        sleep(30);
+
+        // Puffer wird geleert, Anzeige wird direkt ausgegeben
+        fflush(stdout);
+    
+
+    signal(SIGINT, sigintHandler);
+
+    return 0;
+}
