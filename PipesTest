@@ -6,6 +6,7 @@
 #include <fcntl.h>
 #include <sys/ioctl.h>
 #include <linux/i2c-dev.h>
+#include <sys/wait.h>
 
 #define MAX_VOLTAGE 1200
 #define ARRAY_SIZE 10
@@ -25,6 +26,11 @@ int main() {
     FILE *file;
     int pid_des_Kindes;
     int testpipe[2];
+    
+    summe = 0;
+    mittelwert = 0;
+    min = voltage[0];
+    max = voltage[0];
 
     if (pipe(testpipe) == -1) {
         printf("Anonyme Pipe konnte nicht erstellt werden.\n");
@@ -57,10 +63,27 @@ int main() {
 
         close(testpipe[0]);
         write(testpipe[1], voltage, sizeof(voltage));
+        close(testpipe[1]);
+
+        wait(NULL); // Warte auf den Kindprozess
+
+        // Lese die Werte aus der Pipe
+        int pipeSumme, pipeMin, pipeMax, pipeMittelwert;
+        read(testpipe[0], &pipeSumme, sizeof(pipeSumme));
+        read(testpipe[0], &pipeMin, sizeof(pipeMin));
+        read(testpipe[0], &pipeMax, sizeof(pipeMax));
+        read(testpipe[0], &pipeMittelwert, sizeof(pipeMittelwert));
+
+        // Ausgabe der Werte aus der Pipe
+        printf("\nDer Mittelwert ist: %d\n", pipeMittelwert);
+        printf("Der kleinste Wert ist: %d\n", pipeMin);
+        printf("Der größte Wert ist: %d\n", pipeMax);
+        printf("Die Summe ist: %d\n\n", pipeSumme);
     }
 
     if (pid_des_Kindes == 0) {
         printf("Kindprozess: PID: %i\n", getpid());
+
         close(testpipe[1]);
 
         for (size_t r = 0; r < ARRAY_SIZE; r++) {
@@ -114,62 +137,46 @@ int main() {
         // Datei schließen.
         fclose(file);
 
-        // STAT funktioniert nicht weil alle Messwerte als 0 ausgeben werden.
-    summe = 0;
-    mittelwert = 0;
-    min = voltage[0];
-    max = voltage[0];
+        // Berechnungen durchführen und Werte in die Pipe schreiben
+        for (i = 0; i < ARRAY_SIZE; i++) {
+            // Summe für Mittelwert berechnen
+            mittelwert = mittelwert + voltage[i];
 
-for (i = 0; i < ARRAY_SIZE; i++) {
-    read(testpipe[0], &voltage[i], sizeof(voltage[i]));
+            // Summe berechnen
+            summe = summe + voltage[i];
 
-    // Summe für Mittelwert berechnen
-    mittelwert = mittelwert + voltage[i];
+            // Kleinster Wert
+            if (voltage[i] < min) {
+                min = voltage[i];
+            }
 
-    // Summe berechnen
-    summe = summe + voltage[i];
+            // Größter Wert
+            if (voltage[i] > max) {
+                max = voltage[i];
+            }
+        }
 
-    // Kleinster Wert
-    if (voltage[i] < min) {
-        min = voltage[i];
+        // Mittelwert berechnen
+        mittelwert = mittelwert / ARRAY_SIZE;
+
+        // Schreibe die Werte in die Pipe
+        write(testpipe[1], &summe, sizeof(summe));
+        write(testpipe[1], &min, sizeof(min));
+        write(testpipe[1], &max, sizeof(max));
+        write(testpipe[1], &mittelwert, sizeof(mittelwert));
+
+        // Pipe schließen
+        close(testpipe[0]);
+
+        // Beende den Kindprozess
+        exit(0);
     }
 
-    // Größter Wert
-    if (voltage[i] > max) {
-        max = voltage[i];
-    }
-}
+    // Wartezeit
+    sleep(30);
 
-// Mittelwert berechnen
-mittelwert = mittelwert / ARRAY_SIZE;
-
-// Schreibe die Werte in die Pipe
-write(testpipe[1], &summe, sizeof(summe));
-write(testpipe[1], &min, sizeof(min));
-write(testpipe[1], &max, sizeof(max));
-write(testpipe[1], &mittelwert, sizeof(mittelwert)); 
-// Lese die Werte aus der Pipe
-int pipeSumme, pipeMin, pipeMax, pipeMittelwert;
-read(testpipe[0], &pipeSumme, sizeof(pipeSumme));
-read(testpipe[0], &pipeMin, sizeof(pipeMin));
-read(testpipe[0], &pipeMax, sizeof(pipeMax));
-read(testpipe[0], &pipeMittelwert, sizeof(pipeMittelwert));
-
-// Ausgabe der Werte aus der Pipe
-printf("\nDer Mittelwert ist: %d\n", pipeMittelwert);
-printf("Der kleinste Wert ist: %d\n", pipeMin);
-printf("Der größte Wert ist: %d\n", pipeMax);
-printf("Die Summe ist: %d\n\n", pipeSumme);
-    }
-
-
-
-        // Wartezeit
-        sleep(30);
-
-        // Puffer wird geleert, Anzeige wird direkt ausgegeben
-        fflush(stdout);
-    
+    // Puffer wird geleert, Anzeige wird direkt ausgegeben
+    fflush(stdout);
 
     signal(SIGINT, sigintHandler);
 
