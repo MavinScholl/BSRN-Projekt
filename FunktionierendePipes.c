@@ -141,10 +141,7 @@ int main() {
                 }
             }
             double average = (double) sum / validCount;
-            printf("Summe: %d\n", sum);
-            printf("Durchschnitt: %.2f\n", average);
-            printf("Minimum: %d\n", min);
-            printf("Maximum: %d\n", max);
+            
 
             // Schreibe Statistiken in die dritte Pipe
             if (write(pipefd_write3[1], &sum, sizeof(int)) == -1) {
