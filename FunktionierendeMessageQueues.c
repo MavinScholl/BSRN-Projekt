@@ -161,10 +161,7 @@ int main() {
                 }
             }
             double average = (double) sum / validCount;
-            printf("Summe: %d\n", sum);
-            printf("Durchschnitt: %.2f\n", average);
-            printf("Minimum: %d\n", min);
-            printf("Maximum: %d\n", max);
+            
 
             // Schreibe Statistiken in die dritte Message Queue
             struct statistics stats;
