@@ -1,0 +1,208 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <signal.h>
+
+#define PORT 8080
+#define BUFFER_SIZE 10
+
+int sockfd;
+
+void signalHandler(int signum) {
+    printf("Program terminated.\n");
+    close(sockfd);
+    exit(0);
+}
+
+void generateRandomNumbers(int newsockfd) {
+    while (1) {
+        int numbers[BUFFER_SIZE];
+
+        // Generiere 10 Zufallszahlen
+        for (int i = 0; i < BUFFER_SIZE; i++) {
+            numbers[i] = rand() % 100;
+        }
+
+        // Sende die Zufallszahlen an den Server
+        if (send(newsockfd, numbers, sizeof(numbers), 0) == -1) {
+            perror("Fehler beim Senden der Zufallszahlen");
+            exit(1);
+        }
+
+        sleep(10);
+    }
+}
+
+void writeToFile(int newsockfd) {
+    FILE* file = fopen("/home/max/Schreibtisch/BsRn/Messwerte.txt", "w");
+    if (file == NULL) {
+        perror("Fehler beim Öffnen der Datei");
+        exit(1);
+    }
+
+    while (1) {
+        int numbers[BUFFER_SIZE];
+
+        // Empfange die Zufallszahlen vom Server
+        if (recv(newsockfd, numbers, sizeof(numbers), 0) == -1) {
+            perror("Fehler beim Empfangen der Zufallszahlen");
+            exit(1);
+        }
+
+        // Schreibe die Zufallszahlen in die Datei
+        for (int i = 0; i < BUFFER_SIZE; i++) {
+            fprintf(file, "%d\n", numbers[i]);
+        }
+
+        fflush(file);
+    }
+
+    fclose(file);
+}
+
+void calculateStats(int newsockfd) {
+    while (1) {
+        FILE* file = fopen("/home/max/Schreibtisch/BsRn/Messwerte.txt", "r");
+        if (file == NULL) {
+            perror("Fehler beim Öffnen der Datei");
+            exit(1);
+        }
+
+        int numbers[BUFFER_SIZE];
+        int sum = 0;
+
+        // Lese Zufallszahlen aus der Datei und berechne die Summe
+        for (int i = 0; i < BUFFER_SIZE; i++) {
+            if (fscanf(file, "%d", &numbers[i]) != 1) {
+                perror("Fehler beim Lesen der Zufallszahlen");
+                exit(1);
+            }
+            sum += numbers[i];
+        }
+
+        double average = (double)sum / BUFFER_SIZE;
+
+        // Sende Summe und Durchschnitt an den Server
+        if (send(newsockfd, &sum, sizeof(sum), 0) == -1) {
+            perror("Fehler beim Senden der Summe");
+            exit(1);
+        }
+
+        if (send(newsockfd, &average, sizeof(average), 0) == -1) {
+            perror("Fehler beim Senden des Durchschnitts");
+            exit(1);
+        }
+
+        fclose(file);
+
+        sleep(10);
+    }
+}
+
+void printReport(int sockfd) {
+    while (1) {
+        int sum;
+        double average;
+
+        // Empfange Summe und Durchschnitt vom Server
+        if (recv(sockfd, &sum, sizeof(sum), 0) == -1) {
+            perror("Fehler beim Empfangen der Summe");
+            exit(1);
+        }
+
+        if (recv(sockfd, &average, sizeof(average), 0) == -1) {
+            perror("Fehler beim Empfangen des Durchschnitts");
+            exit(1);
+        }
+
+        FILE* file = fopen("/home/max/Schreibtisch/BsRn/Messwerte.txt", "a");
+        if (file == NULL) {
+            perror("Fehler beim Öffnen der Datei");
+            exit(1);
+        }
+
+        // Gib die Ergebnisse aus und schreibe sie in die Datei
+        printf("Summe: %d\nDurchschnitt: %.2lf\n", sum, average);
+        fprintf(file, "Summe: %d\nDurchschnitt: %.2lf\n", sum, average);
+
+        fflush(file);
+        fclose(file);
+
+        sleep(10);
+    }
+}
+
+int main() {
+    struct sockaddr_in serverAddress;
+
+    // Socket erstellen
+    sockfd = socket(AF_INET, SOCK_STREAM, 0);
+    if (sockfd == -1) {
+        perror("Fehler beim Erstellen des Sockets");
+        exit(1);
+    }
+
+    // Serveradresse konfigurieren
+    serverAddress.sin_family = AF_INET;
+    serverAddress.sin_addr.s_addr = INADDR_ANY;
+    serverAddress.sin_port = htons(PORT);
+
+    // Socket an die Serveradresse binden
+    if (bind(sockfd, (struct sockaddr*)&serverAddress, sizeof(serverAddress)) < 0) {
+        perror("Fehler beim Binden des Sockets");
+        exit(1);
+    }
+
+    // Socket im Listenmodus
+    if (listen(sockfd, 1) < 0) {
+        perror("Fehler beim Starten des Listens");
+        exit(1);
+    }
+
+    // Verbindung akzeptieren
+    int newsockfd = accept(sockfd, (struct sockaddr*)NULL, NULL);
+    if (newsockfd < 0) {
+        perror("Fehler beim Akzeptieren der Verbindung");
+        exit(1);
+    }
+
+    // Signalhandler für SIGINT (Ctrl + C) registrieren
+    signal(SIGINT, signalHandler);
+
+    // Prozesse erstellen
+    pid_t pid1, pid2, pid3;
+    pid1 = fork();
+    if (pid1 == 0) {
+        close(sockfd); // Der Log-Prozess benötigt den Server-Socket nicht
+        generateRandomNumbers(newsockfd);
+    } else if (pid1 > 0) {
+        pid2 = fork();
+        if (pid2 == 0) {
+            close(sockfd); // Der Conv-Prozess benötigt den Server-Socket nicht
+            writeToFile(newsockfd);
+        } else if (pid2 > 0) {
+            pid3 = fork();
+            if (pid3 == 0) {
+                close(sockfd); // Der Stat-Prozess benötigt den Server-Socket nicht
+                calculateStats(newsockfd);
+            } else if (pid3 > 0) {
+                close(newsockfd); // Der Report-Prozess benötigt nicht den akzeptierten Socket
+                printReport(sockfd);
+            } else {
+                perror("Fehler beim Erstellen des Report-Prozesses");
+                exit(1);
+            }
+        } else {
+            perror("Fehler beim Erstellen des Stat-Prozesses");
+            exit(1);
+        }
+    } else {
+        perror("Fehler beim Erstellen des Log-Prozesses");
+        exit(1);
+    }
+
+    return 0;
+}
